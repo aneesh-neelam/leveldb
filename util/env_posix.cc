@@ -2,6 +2,7 @@
 // Created by Aneesh Neelam on 11/07/15.
 //
 
+#include <cstdint>
 #include <cstring>
 #include <deque>
 

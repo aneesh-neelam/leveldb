@@ -5,6 +5,7 @@
 #ifndef LEVELDB_DATA_MODEL_H
 #define LEVELDB_DATA_MODEL_H
 
+#include <cstdint>
 
 #include "device.h"
 
