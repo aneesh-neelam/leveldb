@@ -271,11 +271,21 @@ namespace leveldb {
             }
 
             Status GetChildren(const std::string &dir, std::vector<std::string> *result) {
-                return leveldb::Status();
+                for (int i; i <= memblock->metaband.endindex; ++i) {
+                    if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0 && memblock->metaband.metafiles[i].fileexists != 0) {
+                        result.push_back(memblock->metaband.metafiles[i].filename);
+                    }
+                }
+                return Status::OK();
             }
 
             Status DeleteFile(const std::string &fname) {
-                return leveldb::Status();
+                for (int i; i <= memblock->metaband.endindex; ++i) {
+                    if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0) {
+                        memblock->metaband.metafiles[i].fileexists = 0;
+                    }
+                }
+                return Status::OK();
             }
 
             Status CreateDir(const std::string &dirname) {
@@ -287,11 +297,21 @@ namespace leveldb {
             }
 
             Status GetFileSize(const std::string &fname, uint64_t *file_size) {
-                return leveldb::Status();
+                for (int i; i <= memblock->metaband.endindex; ++i) {
+                    if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0) {
+                        file_size = memblock->metaband.metafiles[i].size;
+                    }
+                }
+                return Status::OK();
             }
 
             Status RenameFile(const std::string &src, const std::string &target) {
-                return leveldb::Status();
+                for (int i; i <= memblock->metaband.endindex; ++i) {
+                    if (std::strncmp(src.c_str(), memblock->metaband.metafiles[i].filename, src.length()) == 0) {
+                        strncpy(memblock->metaband.metafiles[i].filename, target.c_str(), target.length);
+                    }
+                }
+                return Status::OK();
             }
 
             Status LockFile(const std::string &fname, FileLock **lock) {
