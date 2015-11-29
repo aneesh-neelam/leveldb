@@ -71,7 +71,7 @@ namespace leveldb {
 
             virtual ~ModRandomAccessFile() { }
 
-            virtual Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const {
+            virtual Status Read(uint64_t offset, size_t n, Slice *result, char *scratch) const {
                 Status s;
                 if (offset + n > metafile_.size) {
                     *result = Slice();
@@ -200,7 +200,7 @@ namespace leveldb {
 
                 int fd = open(DEVICE_PATH, O_RDWR);
                 memblock = reinterpret_cast<Device *>(mmap(NULL, DEVICE_SIZE, PROT_READ | PROT_WRITE,
-                                                           MAP_SHARED | MAP_ANONYMOUS, fd, 0));
+                                                           MAP_SHARED, fd, 0));
                 if (memblock == MAP_FAILED) {
                     char msg[] = "Cannot open device\n";
                     fwrite(msg, sizeof(char), sizeof(msg), stderr);
@@ -251,12 +251,15 @@ namespace leveldb {
                     }
                 }
                 if (fragmented == false) {
-                    ++memblock->metaband.endindex;
-                    *result = new ModWritableFile(fname, memblock->metaband.metafiles[memblock->metaband.endindex], memblock->bands[memblock->metaband.endindex], memblock->metaband.endindex);
+                    ++(memblock->metaband.endindex);
+                    *result = new ModWritableFile(fname, memblock->metaband.metafiles[memblock->metaband.endindex],
+                                                  memblock->bands[memblock->metaband.endindex],
+                                                  memblock->metaband.endindex);
                     return Status::OK();
                 }
                 else {
-                    *result = new ModWritableFile(fname, memblock->metaband.metafiles[index], memblock->bands[index], index);
+                    *result = new ModWritableFile(fname, memblock->metaband.metafiles[index], memblock->bands[index],
+                                                  index);
                     return Status::OK();
                 }
             }
