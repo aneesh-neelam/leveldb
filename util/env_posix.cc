@@ -216,7 +216,7 @@ namespace leveldb {
             }
 
             Status NewSequentialFile(const std::string &fname, SequentialFile **result) {
-                for (int i; i <= memblock->metaband.endindex; ++i) {
+                for (int i = 0; i <= memblock->metaband.endindex; ++i) {
                     if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0) {
                         *result = new ModSequentialFile(memblock->metaband.metafiles[i], memblock->bands[i]);
                         return Status::OK();
@@ -227,7 +227,7 @@ namespace leveldb {
             }
 
             Status NewRandomAccessFile(const std::string &fname, RandomAccessFile **result) {
-                for (int i; i <= memblock->metaband.endindex; ++i) {
+                for (int i = 0; i <= memblock->metaband.endindex; ++i) {
                     if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0) {
                         *result = new ModRandomAccessFile(memblock->metaband.metafiles[i], memblock->bands[i]);
                         return Status::OK();
@@ -265,7 +265,7 @@ namespace leveldb {
             }
 
             bool FileExists(const std::string &fname) {
-                for (int i; i <= memblock->metaband.endindex; ++i) {
+                for (int i = 0; i <= memblock->metaband.endindex; ++i) {
                     if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0) {
                         return (memblock->metaband.metafiles[i].fileexists != 0);
                     }
@@ -274,7 +274,7 @@ namespace leveldb {
             }
 
             Status GetChildren(const std::string &dir, std::vector<std::string> *result) {
-                for (int i; i <= memblock->metaband.endindex; ++i) {
+                for (int i = 0; i <= memblock->metaband.endindex; ++i) {
                     if (memblock->metaband.metafiles[i].fileexists != 0) {
                         result->push_back(memblock->metaband.metafiles[i].filename);
                     }
@@ -283,7 +283,7 @@ namespace leveldb {
             }
 
             Status DeleteFile(const std::string &fname) {
-                for (int i; i <= memblock->metaband.endindex; ++i) {
+                for (int i = 0; i <= memblock->metaband.endindex; ++i) {
                     if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0) {
                         memblock->metaband.metafiles[i].fileexists = 0;
                     }
@@ -300,7 +300,7 @@ namespace leveldb {
             }
 
             Status GetFileSize(const std::string &fname, uint64_t *file_size) {
-                for (int i; i <= memblock->metaband.endindex; ++i) {
+                for (int i = 0; i <= memblock->metaband.endindex; ++i) {
                     if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0) {
                         *file_size = static_cast<uint64_t>(memblock->metaband.metafiles[i].size);
                     }
@@ -309,7 +309,7 @@ namespace leveldb {
             }
 
             Status RenameFile(const std::string &src, const std::string &target) {
-                for (int i; i <= memblock->metaband.endindex; ++i) {
+                for (int i = 0; i <= memblock->metaband.endindex; ++i) {
                     if (std::strncmp(src.c_str(), memblock->metaband.metafiles[i].filename, src.length()) == 0) {
                         strncpy(memblock->metaband.metafiles[i].filename, target.c_str(), target.length());
                     }
