@@ -272,8 +272,8 @@ namespace leveldb {
 
             Status GetChildren(const std::string &dir, std::vector<std::string> *result) {
                 for (int i; i <= memblock->metaband.endindex; ++i) {
-                    if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0 && memblock->metaband.metafiles[i].fileexists != 0) {
-                        result.push_back(memblock->metaband.metafiles[i].filename);
+                    if (memblock->metaband.metafiles[i].fileexists != 0) {
+                        result->push_back(memblock->metaband.metafiles[i].filename);
                     }
                 }
                 return Status::OK();
@@ -299,7 +299,7 @@ namespace leveldb {
             Status GetFileSize(const std::string &fname, uint64_t *file_size) {
                 for (int i; i <= memblock->metaband.endindex; ++i) {
                     if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0) {
-                        file_size = memblock->metaband.metafiles[i].size;
+                        *file_size = static_cast<uint64_t>(memblock->metaband.metafiles[i].size);
                     }
                 }
                 return Status::OK();
@@ -308,7 +308,7 @@ namespace leveldb {
             Status RenameFile(const std::string &src, const std::string &target) {
                 for (int i; i <= memblock->metaband.endindex; ++i) {
                     if (std::strncmp(src.c_str(), memblock->metaband.metafiles[i].filename, src.length()) == 0) {
-                        strncpy(memblock->metaband.metafiles[i].filename, target.c_str(), target.length);
+                        strncpy(memblock->metaband.metafiles[i].filename, target.c_str(), target.length());
                     }
                 }
                 return Status::OK();
