@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <deque>
 #include <set>
+#include "data.h"
 #include "leveldb/env.h"
 #include "leveldb/slice.h"
 #include "port/port.h"
@@ -175,41 +176,59 @@ class PosixMmapReadableFile: public RandomAccessFile {
 class PosixWritableFile : public WritableFile {
  private:
   std::string filename_;
-  FILE* file_;
+  Metadata* metadata_;
+  fstream* device_;
+
+  uint64_t band = 0;
 
  public:
-  PosixWritableFile(const std::string& fname, FILE* f)
-      : filename_(fname), file_(f) { }
+  PosixWritableFile(const std::string& fname, fstream* device, Metadata* m)
+      : filename_(fname), metadata_(m) {
+        int index = 0;
+        bool empty = false;
+        bool exists = false;
+        for(int i = 0; i < MAX_FILES; ++i) {
+          if (!m[i]->exists && empty) {
+            index = i;
+            empty = true;
+          }
+          if (strncmp(filename_.c_str(), m[i]->filename, filename_.length() == 0) {
+            exists = true;
+            band = m[i]->band;
+          }
+        }
+        if (!exists && empty) {
+          band = (index * BAND_SIZE) + (sizeof(Metadata) * MAX_FILES);
+        }
+        else {
+          char msg[] = "Not enough space\n";
+          fwrite(msg, 1, sizeof(msg), stderr);
+          abort();
+        }
+   }
 
   ~PosixWritableFile() {
-    if (file_ != NULL) {
+    if (device_.is_open()) {
       // Ignoring any potential errors
-      fclose(file_);
+      device_.close();
     }
   }
 
   virtual Status Append(const Slice& data) {
-    size_t r = fwrite_unlocked(data.data(), 1, data.size(), file_);
-    if (r != data.size()) {
-      return IOError(filename_, errno);
-    }
+    device_.write(data.data(), data.size());
     return Status::OK();
   }
 
   virtual Status Close() {
-    Status result;
-    if (fclose(file_) != 0) {
-      result = IOError(filename_, errno);
+    if (device_.is_open()) {
+      // Ignoring any potential errors
+      device_.close();
     }
-    file_ = NULL;
-    return result;
+    return Status::OK();
   }
 
   virtual Status Flush() {
-    if (fflush_unlocked(file_) != 0) {
-      return IOError(filename_, errno);
-    }
-    return Status::OK();
+    device_.flush();
   }
 
   Status SyncDirIfManifest() {
@@ -240,16 +259,7 @@ class PosixWritableFile : public WritableFile {
   }
 
   virtual Status Sync() {
-    // Ensure new files referred to by the manifest are in the filesystem.
-    Status s = SyncDirIfManifest();
-    if (!s.ok()) {
-      return s;
-    }
-    if (fflush_unlocked(file_) != 0 ||
-        fdatasync(fileno(file_)) != 0) {
-      s = Status::IOError(filename_, strerror(errno));
-    }
-    return s;
+    device_.sync();
   }
 };
 
@@ -339,15 +349,18 @@ class PosixEnv : public Env {
 
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) {
-    Status s;
-    FILE* f = fopen(fname.c_str(), "w");
-    if (f == NULL) {
-      *result = NULL;
-      s = IOError(fname, errno);
-    } else {
-      *result = new PosixWritableFile(fname, f);
+
+    Metadata *metadata = new Metadata[MAX_FILES]
+
+    fstream device(DEVICE_PATH, ios::in | ios::out | ios::binary);
+    if (device.is_open()) {
+      device.seekg(0);
+      device.read((Metadata*)metadata, sizeof(Metadata) * MAX_FILES);
+
+      *result = new PosixWritableFile(fname, device, metadata);
+      return Status::OK();
     }
-    return s;
+    return IOError(fname, errno);
   }
 
   virtual bool FileExists(const std::string& fname) {
