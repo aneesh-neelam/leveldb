@@ -315,11 +315,11 @@ namespace leveldb {
             }
 
             Status LockFile(const std::string &fname, FileLock **lock) {
-                return leveldb::Status();
+              return Status::OK();
             }
 
             Status UnlockFile(FileLock *lock) {
-                return leveldb::Status();
+              return Status::OK();
             }
 
             void Schedule(void (*function)(void *), void *arg) {
