@@ -16,6 +16,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <deque>
+#include <fstream>
+#include <iostream>
 #include <set>
 #include "data.h"
 #include "leveldb/env.h"
@@ -35,59 +37,83 @@ static Status IOError(const std::string& context, int err_number) {
 
 class PosixSequentialFile: public SequentialFile {
  private:
-  std::string filename_;
-  FILE* file_;
+   std::string filename_;
+   Metadata* metadata_;
+   std::fstream device_;
+
+   uint64_t band = 0;
+   bool exists;
 
  public:
-  PosixSequentialFile(const std::string& fname, FILE* f)
-      : filename_(fname), file_(f) { }
-  virtual ~PosixSequentialFile() { fclose(file_); }
+  PosixSequentialFile(const std::string& fname, Metadata* m)
+      : filename_(fname), metadata_(m) {
+        device_ = std::fstream(DEVICE_PATH, std::fstream::in | std::fstream::binary);
+        for (int i = 0; i < MAX_FILES; ++i) {
+          if (strncmp(filename_.c_str(), metadata_[i].filename, filename_.length() == 0) && metadata_[i].exists) {
+            exists = true;
+            band = m[i].band;
+          }
+        }
+  }
+  virtual ~PosixSequentialFile() {
+    if (device_.is_open()) {
+    // Ignoring any potential errors
+    device_.close();
+    }
+  }
 
   virtual Status Read(size_t n, Slice* result, char* scratch) {
-    Status s;
-    size_t r = fread_unlocked(scratch, 1, n, file_);
-    *result = Slice(scratch, r);
-    if (r < n) {
-      if (feof(file_)) {
-        // We leave status as ok if we hit the end of the file
-      } else {
-        // A partial read with an error: return a non-ok status
-        s = IOError(filename_, errno);
-      }
-    }
-    return s;
+    device_.read(scratch, n);
+    *result = Slice(scratch, n);
+    return Status::OK();
   }
 
   virtual Status Skip(uint64_t n) {
-    if (fseek(file_, n, SEEK_CUR)) {
-      return IOError(filename_, errno);
+    if (device_.is_open()) {
+      device_.seekg(band + n);
+      return Status::OK();
     }
-    return Status::OK();
+    return IOError(filename_, errno);
   }
 };
 
 // pread() based random-access
 class PosixRandomAccessFile: public RandomAccessFile {
- private:
+private:
   std::string filename_;
+  Metadata* metadata_;
   int fd_;
 
- public:
-  PosixRandomAccessFile(const std::string& fname, int fd)
-      : filename_(fname), fd_(fd) { }
-  virtual ~PosixRandomAccessFile() { close(fd_); }
+  uint64_t band = 0;
+  bool exists;
 
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      char* scratch) const {
-    Status s;
-    ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
-    *result = Slice(scratch, (r < 0) ? 0 : r);
-    if (r < 0) {
-      // An error: return a non-ok status
-      s = IOError(filename_, errno);
-    }
-    return s;
-  }
+public:
+ PosixRandomAccessFile(const std::string& fname, Metadata* m)
+     : filename_(fname), metadata_(m) {
+
+       FILE *f = fopen(DEVICE_PATH, O_RDONLY);
+       fd_ = fileno(f);
+       for (int i = 0; i < MAX_FILES; ++i) {
+         if (strncmp(filename_.c_str(), metadata_[i].filename, filename_.length() == 0) && metadata_[i].exists) {
+           exists = true;
+           band = m[i].band;
+         }
+       }
+ }
+ virtual ~PosixRandomAccessFile() {
+   close(fd_);
+ }
+
+ virtual Status Read(uint64_t offset, size_t n, Slice *result, char *scratch) const {
+   Status s;
+   ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(band + offset));
+   *result = Slice(scratch, (r < 0) ? 0 : r);
+   if (r < 0) {
+    // An error: return a non-ok status
+    s = IOError(filename_, errno);
+   }
+   return s;
+ }
 };
 
 // Helper class to limit mmap file usage so that we do not end up
@@ -177,34 +203,36 @@ class PosixWritableFile : public WritableFile {
  private:
   std::string filename_;
   Metadata* metadata_;
-  fstream* device_;
+  std::fstream device_;
 
   uint64_t band = 0;
+  int index;
 
  public:
-  PosixWritableFile(const std::string& fname, fstream* device, Metadata* m)
+  PosixWritableFile(const std::string& fname, Metadata* m)
       : filename_(fname), metadata_(m) {
-        int index = 0;
-        bool empty = false;
-        bool exists = false;
-        for(int i = 0; i < MAX_FILES; ++i) {
-          if (!m[i]->exists && empty) {
-            index = i;
-            empty = true;
-          }
-          if (strncmp(filename_.c_str(), m[i]->filename, filename_.length() == 0) {
-            exists = true;
-            band = m[i]->band;
-          }
-        }
-        if (!exists && empty) {
-          band = (index * BAND_SIZE) + (sizeof(Metadata) * MAX_FILES);
-        }
-        else {
-          char msg[] = "Not enough space\n";
-          fwrite(msg, 1, sizeof(msg), stderr);
-          abort();
-        }
+    device_ = std::fstream(DEVICE_PATH, std::fstream::in | std::fstream::out | std::fstream::binary);
+    index = 0;
+    bool empty = false;
+    bool exists = false;
+    for (int i = 0; i < MAX_FILES; ++i) {
+      if (!metadata_[i].exists && empty) {
+        index = i;
+        empty = true;
+      }
+      if (strncmp(filename_.c_str(), metadata_[i].filename, filename_.length() == 0)) {
+        exists = true;
+        band = metadata_[i].band;
+        index = i;
+      }
+    }
+    if (!exists && empty) {
+      band = index * BAND_SIZE + sizeof(Metadata) * MAX_FILES + 1;
+    }
+    else {
+      index = 0;
+      band = sizeof(Metadata) * MAX_FILES + 1;
+     }
    }
 
   ~PosixWritableFile() {
@@ -215,6 +243,10 @@ class PosixWritableFile : public WritableFile {
   }
 
   virtual Status Append(const Slice& data) {
+    device_.seekp(0);
+    metadata_[index].size = data.size();
+    device_.write(reinterpret_cast<char*>(metadata_), sizeof(Metadata) * MAX_FILES);
+    device_.seekp(band);
     device_.write(data.data(), data.size());
     return Status::OK();
   }
@@ -309,55 +341,45 @@ class PosixEnv : public Env {
 
   virtual Status NewSequentialFile(const std::string& fname,
                                    SequentialFile** result) {
-    FILE* f = fopen(fname.c_str(), "r");
-    if (f == NULL) {
-      *result = NULL;
-      return IOError(fname, errno);
-    } else {
-      *result = new PosixSequentialFile(fname, f);
-      return Status::OK();
-    }
+                                     Metadata *metadata = new Metadata[MAX_FILES];
+
+                                     std::fstream device(DEVICE_PATH, std::fstream::in | std::fstream::binary);
+                                     if (device.is_open()) {
+                                       device.seekg(0);
+                                       device.read(reinterpret_cast<char*>(metadata), sizeof(Metadata) * MAX_FILES);
+                                       device.close();
+                                       *result = new PosixSequentialFile(fname, metadata);
+                                       return Status::OK();
+                                     }
+                                     return IOError(fname, errno);
   }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      RandomAccessFile** result) {
-    *result = NULL;
-    Status s;
-    int fd = open(fname.c_str(), O_RDONLY);
-    if (fd < 0) {
-      s = IOError(fname, errno);
-    } else if (mmap_limit_.Acquire()) {
-      uint64_t size;
-      s = GetFileSize(fname, &size);
-      if (s.ok()) {
-        void* base = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-        if (base != MAP_FAILED) {
-          *result = new PosixMmapReadableFile(fname, base, size, &mmap_limit_);
-        } else {
-          s = IOError(fname, errno);
-        }
-      }
-      close(fd);
-      if (!s.ok()) {
-        mmap_limit_.Release();
-      }
-    } else {
-      *result = new PosixRandomAccessFile(fname, fd);
-    }
-    return s;
+                                       Metadata *metadata = new Metadata[MAX_FILES];
+
+                                       std::fstream device(DEVICE_PATH, std::fstream::in | std::fstream::binary);
+                                       if (device.is_open()) {
+                                         device.seekg(0);
+                                         device.read(reinterpret_cast<char*>(metadata), sizeof(Metadata) * MAX_FILES);
+                                         device.close();
+                                         *result = new PosixRandomAccessFile(fname, metadata);
+                                         return Status::OK();
+                                       }
+                                       return IOError(fname, errno);
   }
 
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) {
 
-    Metadata *metadata = new Metadata[MAX_FILES]
+    Metadata *metadata = new Metadata[MAX_FILES];
 
-    fstream device(DEVICE_PATH, ios::in | ios::out | ios::binary);
+    std::fstream device(DEVICE_PATH, std::fstream::in | std::fstream::out | std::fstream::binary);
     if (device.is_open()) {
       device.seekg(0);
-      device.read((Metadata*)metadata, sizeof(Metadata) * MAX_FILES);
-
-      *result = new PosixWritableFile(fname, device, metadata);
+      device.read(reinterpret_cast<char*>(metadata), sizeof(Metadata) * MAX_FILES);
+      device.close();
+      *result = new PosixWritableFile(fname, metadata);
       return Status::OK();
     }
     return IOError(fname, errno);

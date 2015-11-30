@@ -5,8 +5,9 @@
 #define MAX_FILES 1000
 
 class Metadata {
-  bool exists;
-  char filename[100];
-  size_t size;
-  uint64_t band;
-}
+  public:
+    bool exists;
+    char filename[100];
+    size_t size;
+    uint64_t band;
+};
