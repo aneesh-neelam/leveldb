@@ -91,22 +91,22 @@ namespace leveldb {
             Device *device_;
             uint64_t index_;
         public:
-            ModWritableFile(const std::string filename, Device &device, uint64_t index)
+            ModWritableFile(const std::string filename, Device *device, uint64_t index)
                     : filename_(filename), device_(device), index_(index) {
-                if (device_->metaband.metafile[index_].fileexists == 1) {
-                    std::memset(&(device_->bands[index_]), 0, device_->metaband.metafile[index_].size);
-                    device_->metaband.metafile[index_].size = 0;
-                    device_->metaband.metafile[index_].index = index_;
+                if (device_->metaband.metafiles[index_].fileexists == 1) {
+                    std::memset(&(device_->bands[index_]), 0, device_->metaband.metafiles[index_].size);
+                    device_->metaband.metafiles[index_].size = 0;
+                    device_->metaband.metafiles[index_].index = index_;
                 }
-                device_->metaband.metafile[index].fileexists = 1;
-                device_->metaband.metafile[index].size = 0;
+                device_->metaband.metafiles[index_].fileexists = 1;
+                device_->metaband.metafiles[index_].size = 0;
             }
 
             virtual ~ModWritableFile() { }
 
             virtual Status Append(const Slice &data) {
-                std::memcpy(device->bands[index].file, data.data(), data.size());
-                device_->metaband.metafile[index_].size = data.size();
+                std::memcpy(device_->bands[index_].file, data.data(), data.size());
+                device_->metaband.metafiles[index_].size = data.size();
                 return Status::OK();
             }
 
@@ -115,12 +115,12 @@ namespace leveldb {
             }
 
             virtual Status Flush() {
-                msync(device, DEVICE_SIZE, MS_SYNC);
+                msync(device_, DEVICE_SIZE, MS_SYNC);
                 return Status::OK();
             }
 
             virtual Status Sync() {
-                msync(device, DEVICE_SIZE, MS_SYNC);
+                msync(device_, DEVICE_SIZE, MS_SYNC);
                 return Status::OK();
             }
         };
