@@ -87,28 +87,26 @@ namespace leveldb {
 
         class ModWritableFile : public WritableFile {
         private:
-            Metaband metaband_;
-            Metafile metafile_;
-            Band band_;
             std::string filename_;
+            Device *device_;
             uint64_t index_;
         public:
-            ModWritableFile(const std::string filename, Metafile &metafile, Band &band, uint64_t index)
-                    : filename_(filename), metafile_(metafile), band_(band), index_(index) {
-                if (metafile.fileexists == 1) {
-                    std::memset(&band_, 0, metafile_.size);
-                    metafile_.size = 0;
-                    metafile_.index = index;
+            ModWritableFile(const std::string filename, Device &device, uint64_t index)
+                    : filename_(filename), device_(device), index_(index) {
+                if (device_->metaband.metafile[index_].fileexists == 1) {
+                    std::memset(&(device_->bands[index_]), 0, device_->metaband.metafile[index_].size);
+                    device_->metaband.metafile[index_].size = 0;
+                    device_->metaband.metafile[index_].index = index_;
                 }
-                metafile_.fileexists = 1;
-                metafile_.size = 0;
+                device_->metaband.metafile[index].fileexists = 1;
+                device_->metaband.metafile[index].size = 0;
             }
 
             virtual ~ModWritableFile() { }
 
             virtual Status Append(const Slice &data) {
-                std::memcpy(band_.file, data.data(), data.size());
-                metafile_.size = data.size();
+                std::memcpy(device->bands[index].file, data.data(), data.size());
+                device_->metaband.metafile[index_].size = data.size();
                 return Status::OK();
             }
 
@@ -117,17 +115,19 @@ namespace leveldb {
             }
 
             virtual Status Flush() {
+                msync(device, DEVICE_SIZE, MS_SYNC);
                 return Status::OK();
             }
 
             virtual Status Sync() {
+                msync(device, DEVICE_SIZE, MS_SYNC);
                 return Status::OK();
             }
         };
 
         class ModFileLock : public FileLock {
         public:
-            Metafile metafile;
+            Metafile metafile_;
         };
 
         namespace {
@@ -200,7 +200,7 @@ namespace leveldb {
 
                 int fd = open(DEVICE_PATH, O_RDWR);
                 memblock = reinterpret_cast<Device *>(mmap(NULL, DEVICE_SIZE, PROT_READ | PROT_WRITE,
-                                                           MAP_SHARED, fd, 0));
+                                                           MAP_SHARED | MAP_FILE, fd, 0));
                 if (memblock == MAP_FAILED) {
                     char msg[] = "Cannot open device\n";
                     fwrite(msg, sizeof(char), sizeof(msg), stderr);
@@ -246,20 +246,17 @@ namespace leveldb {
                         index = i;
                     }
                     if (std::strncmp(fname.c_str(), memblock->metaband.metafiles[i].filename, fname.length()) == 0) {
-                        *result = new ModWritableFile(fname, memblock->metaband.metafiles[i], memblock->bands[i], i);
+                        *result = new ModWritableFile(fname, memblock, i);
                         return Status::OK();
                     }
                 }
                 if (fragmented == false) {
                     ++(memblock->metaband.endindex);
-                    *result = new ModWritableFile(fname, memblock->metaband.metafiles[memblock->metaband.endindex],
-                                                  memblock->bands[memblock->metaband.endindex],
-                                                  memblock->metaband.endindex);
+                    *result = new ModWritableFile(fname, memblock, memblock->metaband.endindex);
                     return Status::OK();
                 }
                 else {
-                    *result = new ModWritableFile(fname, memblock->metaband.metafiles[index], memblock->bands[index],
-                                                  index);
+                    *result = new ModWritableFile(fname, memblock, index);
                     return Status::OK();
                 }
             }
